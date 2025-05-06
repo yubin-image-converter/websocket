@@ -16,3 +16,5 @@ logs/
 
 # VSCode
 .vscode/
+
+websocket.code-workspace
