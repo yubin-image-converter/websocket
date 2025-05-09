@@ -65,24 +65,43 @@ async function bootstrap() {
     ws.on("message", async (data) => {
       try {
         const msg = JSON.parse(data.toString());
-        const { userId, requestId, txtUrl } = msg;
+        const { event, data: payload } = msg;
 
         console.log("📩 [워커 메시지 수신]", msg);
-        console.log(`✅ [ASCII 완료] userId=${userId}, requestId=${requestId}`);
 
-        // 프론트 전달
-        clientIO.to(userId).emit("ascii_complete", msg);
-        console.log(`➡️  [클라이언트 전달 완료] userId=${userId}`);
+        switch (event) {
+          case "ascii_complete": {
+            const { userId, requestId, txtUrl } = payload;
+            console.log(
+              `✅ [ASCII 완료] userId=${userId}, requestId=${requestId}`
+            );
 
-        // Spring Boot 서버에 알리기
-        const apiUrl = process.env.API_SERVER_URL + "/ascii/done";
-        await fetch(apiUrl, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(msg),
-        });
+            // 프론트 전달
+            clientIO.to(userId).emit("ascii_complete", payload);
+            console.log(`➡️ [클라이언트 전달 완료] ascii_complete`);
 
-        console.log(`📬 [Spring API 요청 완료] → ${apiUrl}`);
+            // Spring Boot 서버에 POST
+            const apiUrl = process.env.API_SERVER_URL + "/ascii/done";
+            await fetch(apiUrl, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(payload),
+            });
+            console.log(`📬 [Spring API 요청 완료] → ${apiUrl}`);
+            break;
+          }
+
+          case "progress_update": {
+            const { userId, requestId, progress } = payload;
+            console.log(`📈 [Progress] ${progress}% (userId=${userId})`);
+
+            clientIO.to(userId).emit("progress_update", payload);
+            break;
+          }
+
+          default:
+            console.warn("⚠️ 알 수 없는 event:", event);
+        }
       } catch (err) {
         console.error("❌ 메시지 파싱 실패:", err);
       }
