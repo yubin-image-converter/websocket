@@ -3,112 +3,99 @@ import "dotenv/config";
 import express from "express";
 import http from "http";
 import { Server } from "socket.io";
+import { WebSocketServer } from "ws";
+
 import { connectRedis, redisClient } from "./lib/redis";
 import { addSocket, removeSocket } from "./socket/user-socket-map";
 
 async function bootstrap() {
   await connectRedis();
+  console.log("✅ Redis 연결 성공");
 
-  const app = express();
-  const server = http.createServer(app);
+  // -------------------------
+  // 1. 클라이언트용 소켓 (React) - PORT 4000
+  // -------------------------
+  const app1 = express();
+  const server1 = http.createServer(app1);
 
-  const io = new Server(server, {
+  const clientIO = new Server(server1, {
     cors: {
-      origin: "*",
+      origin: ["http://localhost:5173"],
+      credentials: true,
     },
+    path: "/socket.io",
   });
 
-  io.on("connection", (socket) => {
+  clientIO.on("connection", (socket) => {
     const userId = socket.handshake.auth.userId;
     if (!userId) {
-      console.warn(`[Socket] Missing userId. Disconnecting: ${socket.id}`);
+      console.warn("⚠️ [Client Socket] userId 없음 → 연결 종료");
       socket.disconnect();
       return;
     }
 
-    console.log({ userId, socketId: socket.id });
+    console.log(`🟢 [Client 연결됨] userId=${userId}, socketId=${socket.id}`);
+    socket.join(userId);
+
     void addSocket(userId, socket.id);
 
     socket.on("disconnect", () => {
       void removeSocket(userId, socket.id);
+      console.log(
+        `🔌 [Client 연결 종료] userId=${userId}, socketId=${socket.id}`
+      );
     });
   });
-  server.listen(4000, () => {
-    console.log("WebSocket server running on http://localhost:4000");
+
+  server1.listen(4000, () => {
+    console.log("🚀 [Client Socket] http://localhost:4000");
+  });
+
+  // -------------------------
+  // 2. ASCII 워커용 소켓 - PORT 4001
+  // -------------------------
+  const app2 = express();
+  const server2 = http.createServer(app2);
+
+  const asciiWSS = new WebSocketServer({ server: server2, path: "/" });
+
+  asciiWSS.on("connection", (ws) => {
+    console.log("⚙️ [Rust 워커 연결됨] WebSocket 연결 수립됨");
+
+    ws.on("message", async (data) => {
+      try {
+        const msg = JSON.parse(data.toString());
+        const { userId, requestId, txtUrl } = msg;
+
+        console.log("📩 [워커 메시지 수신]", msg);
+        console.log(`✅ [ASCII 완료] userId=${userId}, requestId=${requestId}`);
+
+        // 프론트 전달
+        clientIO.to(userId).emit("ascii_complete", msg);
+        console.log(`➡️  [클라이언트 전달 완료] userId=${userId}`);
+
+        // Spring Boot 서버에 알리기
+        const apiUrl = process.env.API_SERVER_URL + "/ascii/done";
+        await fetch(apiUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(msg),
+        });
+
+        console.log(`📬 [Spring API 요청 완료] → ${apiUrl}`);
+      } catch (err) {
+        console.error("❌ 메시지 파싱 실패:", err);
+      }
+    });
+
+    ws.on("close", () => {
+      console.log("🔒 [Rust 워커 연결 종료]");
+    });
+  });
+
+  server2.listen(4001, () => {
+    console.log("🚀 [Worker Socket] ws://localhost:4001");
   });
 }
 
 bootstrap();
-
-// // src/main.ts
-// import express from "express";
-// import { createServer } from "http";
-// import { Server } from "socket.io";
-// import { redisClient } from "./lib/redis";
-
-// const app = express();
-// const httpServer = createServer(app);
-// const io = new Server(httpServer, {
-//   cors: {
-//     origin: "*", // 배포 시엔 도메인 지정
-//     methods: ["GET", "POST"],
-//   },
-// });
-
-// // WebSocket 연결
-// // io.on("connection", (socket) => {
-// //   console.log(`Client connected: ${socket.id}`);
-
-// //   socket.on("disconnect", () => {
-// //     console.log(`Client disconnected: ${socket.id}`);
-// //   });
-// // });
-// // io.on("connection", (socket) => {
-// //   console.log(`client connected: ${socket.id}`);
-
-// //   socket.on("disconnect", () => {
-// //     console.log(`client disconnected: ${socket.id}`);
-// //   });
-
-// //   socket.on("ping", (msg) => {
-// //     console.log("ping:", msg);
-// //     socket.emit("pong", "hi from server!");
-// //   });
-// // });
-
-// io.on("connection", async (socket) => {
-//   const userId = "mock-user-id"; // 다음 단계에서 JWT로 교체 예정
-
-//   console.log(`client connected: ${socket.id}`);
-
-//   // Redis에 저장
-//   await redisClient.set(`ws:uid:${userId}`, socket.id);
-//   await redisClient.set(`ws:sid:${socket.id}`, userId);
-
-//   socket.on("disconnect", async () => {
-//     console.log(`client disconnected: ${socket.id}`);
-
-//     const uid = await redisClient.get(`ws:sid:${socket.id}`);
-//     if (uid) {
-//       await redisClient.del(`ws:uid:${uid}`);
-//     }
-
-//     await redisClient.del(`ws:sid:${socket.id}`);
-//   });
-// });
-// // 간단한 HTTP API
-// app.use(express.json());
-
-// // app.post("/progress", (req, res) => {
-// //   const { taskId, userId, progress } = req.body;
-// //   console.log(`Progress update from Rust:`, req.body);
-
-// //   // 나중에 Redis로 userId → socketId 매핑 후 사용
-// //   io.emit("progress", { taskId, progress });
-
-// //   res.sendStatus(200);
-// // });
-
-// httpServer.listen(4000, () => {
-//   console.log("WebSocket + HTTP Server running on http://localhost:4000");
-// });
