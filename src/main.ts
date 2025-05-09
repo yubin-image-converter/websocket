@@ -96,6 +96,7 @@ async function bootstrap() {
             console.log(`📈 [Progress] ${progress}% (userId=${userId})`);
 
             clientIO.to(userId).emit("progress_update", payload);
+            console.log(`➡️ emit to room: ${userId}, payload:`, payload);
             break;
           }
 
