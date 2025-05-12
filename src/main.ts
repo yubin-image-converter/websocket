@@ -79,7 +79,7 @@ async function bootstrap() {
             clientIO.to(userId).emit("ascii_complete", payload);
             console.log("[Worker Socket → Client] Emitted: ascii_complete");
 
-            const apiUrl = `${config.apiServerUrl}/ascii/done`;
+            const apiUrl = `${config.apiServerUrl}/api/converts/complete`;
             await fetch(apiUrl, {
               method: "POST",
               headers: { "Content-Type": "application/json" },
