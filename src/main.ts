@@ -5,7 +5,11 @@ import http from "http";
 import { Server } from "socket.io";
 import { WebSocketServer } from "ws";
 import { connectRedis } from "./lib/redis";
-import { addSocket, removeSocket } from "./socket/user-socket-map";
+import { addSocket, removeSocket } from "./socket/redis-user-socket-map";
+import {
+  addLocalSocket,
+  removeLocalSocket,
+} from "./socket/local-user-socket-map";
 
 async function bootstrap() {
   await connectRedis();
@@ -26,24 +30,26 @@ async function bootstrap() {
   });
 
   clientIO.on("connection", (socket) => {
-    const userId = socket.handshake.auth.userId;
-    if (!userId) {
-      console.warn("[Client Socket] Missing userId → disconnecting...");
+    const { userId, clientId } = socket.handshake.auth;
+    if (!userId || !clientId) {
+      console.warn(
+        "[Client Socket] Missing userId or clientId → disconnecting..."
+      );
       socket.disconnect();
       return;
     }
 
     console.log(
-      `[Client Socket] Connected: userId=${userId}, socketId=${socket.id}`
+      `🔌 [Client Socket] Connected: userId=${userId}, clientId=${clientId}, socketId=${socket.id}`
     );
-    socket.join(userId);
-    void addSocket(userId, socket.id);
-
+    addSocket(userId, clientId, socket);
+    addLocalSocket(userId, clientId, socket);
     socket.on("disconnect", () => {
-      void removeSocket(userId, socket.id);
       console.log(
-        `[Client Socket] Disconnected: userId=${userId}, socketId=${socket.id}`
+        `🛑 [Client Socket] Disconnected: userId=${userId}, clientId=${clientId}, socketId=${socket.id}`
       );
+      removeSocket(userId, clientId);
+      removeLocalSocket(userId, clientId);
     });
   });
 
