@@ -11,7 +11,7 @@
 | User Socket Mapping | 사용자 ID, 클라이언트 ID, WebSocket 인스턴스 간의 매핑 처리 |
 | Redis Support       | Redis를 활용한 수평 확장 및 다중 서버 간 세션 공유 지원     |
 | Graceful Disconnect | 소켓 연결 해제 시 자동 정리 및 클린업 처리                  |
-| Flexible Modes      | 메모리 기반(local) 및 Redis 기반 모드 동시 지원             |
+| Flexible Modes      | 메모리 기반(local) 및 Redis 기반 모드 동시 지원(구현중)             |
 
 ---
 
